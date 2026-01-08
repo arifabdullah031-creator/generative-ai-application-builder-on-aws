@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 export interface NotificationItem {
     id: string;
@@ -31,6 +31,15 @@ export interface NotificationOptions {
 
 export function useNotifications() {
     const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+    const timeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+
+    // Cleanup all timeouts when component unmounts
+    useEffect(() => {
+        return () => {
+            timeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+            timeoutsRef.current.clear();
+        };
+    }, []);
 
     const addNotification = (notification: Omit<NotificationItem, 'id'>) => {
         const id = `notification-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
@@ -43,19 +52,30 @@ export function useNotifications() {
         const timeout = notification.autoDismissTimeout ?? 5000;
 
         if (shouldAutoDismiss) {
-            setTimeout(() => {
+            const timeoutId = setTimeout(() => {
                 setNotifications((prev) => prev.filter((n) => n.id !== id));
+                timeoutsRef.current.delete(id);
             }, timeout);
+            timeoutsRef.current.set(id, timeoutId);
         }
 
         return id;
     };
 
     const removeNotification = (id: string) => {
+        // Clear the timeout if it exists
+        const timeoutId = timeoutsRef.current.get(id);
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutsRef.current.delete(id);
+        }
         setNotifications((prev) => prev.filter((n) => n.id !== id));
     };
 
     const clearAllNotifications = () => {
+        // Clear all timeouts
+        timeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+        timeoutsRef.current.clear();
         setNotifications([]);
     };
 
